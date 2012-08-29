@@ -49,6 +49,8 @@ class OAuth2 extends Auth {
   const AUTH_TOKEN_LIFETIME_SECS = 300; // five minutes in seconds
   const MAX_TOKEN_LIFETIME_SECS = 86400; // one day in seconds
 
+  const RATE_LIMIT_MESSAGE = "User Rate Limit Exceeded";
+
   /**
    * Instantiates the class, but does not initiate the login flow, leaving it
    * to the discretion of the caller (which is done by calling authenticate()).
@@ -257,10 +259,35 @@ class OAuth2 extends Auth {
 
   private function refreshTokenRequest($params) {
     $http = new HttpRequest(self::OAUTH2_TOKEN_URI, 'POST', array(), $params);
-    $request = Client::$io->makeRequest($http);
 
-    $code = $request->getResponseHttpCode();
-    $body = $request->getResponseBody();
+    // Refresh token service is rate limited, For high-performance application which use assertion is very likely
+    // To exceed that limit. In case the limit will be exceeded, the following section will keep trying to receive an token in exponential intervals.
+    // In case this behaviour is unwanted, set "oauth2_get_token_time_slice" to 0, the loop will run only once.
+    $timeSlice = Config::get('oauth2_get_token_time_slice');
+    $interval  = Config::get('oauth2_get_token_attempt_interval');
+    $tryUntil = time() + $timeSlice;
+    $currIndex = 0;
+    $continue = true;
+    while ($continue) {
+      $request = Client::$io->makeRequest($http);
+
+      $code = $request->getResponseHttpCode();
+      $body = $request->getResponseBody();
+
+      if ($code === 403 && stripos($body, self::RATE_LIMIT_MESSAGE) !== false) {
+        if (time() > $tryUntil ) {
+          $continue = false;
+        } else {
+          $sleep = pow(2, $currIndex) * $interval;
+          ++$currIndex;
+          usleep($sleep);
+        }
+      }
+      else {
+        $continue = false;
+      }
+    }
+
     if (200 == $code) {
       $token = json_decode($body, true);
       if ($token == null) {

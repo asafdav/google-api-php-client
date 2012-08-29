@@ -48,6 +48,11 @@ class Config {
       'oauth2_client_secret' => '',
       'oauth2_redirect_uri' => '',
 
+      // Maximum time slice for getting a token, Google's Oauth2 authorization server is rate limited
+      // For high performance applications, usually it takes more than one attempt to receive a token
+      'oauth2_get_token_time_slice' => '30', # In seconds
+      'oauth2_get_token_attempt_interval' => '1000000', # In mili seconds
+
       // The developer key, you get this at https://code.google.com/apis/console
       'developer_key' => '',
 
